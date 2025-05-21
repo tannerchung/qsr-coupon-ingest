@@ -14,15 +14,19 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-# mParticle API configuration
-MPARTICLE_API_URL = "https://s2s.mparticle.com/v2/events"
+# mParticle API configuration - different endpoints based on data center
+MPARTICLE_API_ENDPOINTS = {
+    "us": "https://s2s.mparticle.com/v2/events",
+    "eu": "https://s2s.eu-west-1.mparticle.com/v2/events"
+}
 
 
 def send_event_to_mparticle(
     event: Dict[str, Any], 
     api_key: str, 
     api_secret: str, 
-    max_retries: int = 5
+    max_retries: int = 5,
+    data_center: str = "us"
 ) -> bool:
     """
     Send event to mParticle with exponential backoff and jitter.
@@ -32,19 +36,22 @@ def send_event_to_mparticle(
         api_key: mParticle API key
         api_secret: mParticle API secret
         max_retries: Maximum number of retry attempts
+        data_center: Data center location ('us' or 'eu')
         
     Returns:
         Boolean indicating success or failure
     """
     retry_count = 0
+    api_url = MPARTICLE_API_ENDPOINTS.get(data_center, MPARTICLE_API_ENDPOINTS["us"])
     
     while retry_count < max_retries:
         try:
             response = requests.post(
-                MPARTICLE_API_URL,
+                api_url,
                 json=event,
                 auth=(api_key, api_secret),
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
+                timeout=30
             )
             
             if response.status_code == 429:  # Rate limited
@@ -53,17 +60,17 @@ def send_event_to_mparticle(
                 jitter = random.uniform(0, 1)
                 backoff_time = backoff_seconds + jitter
                 
-                logger.warning(f"Rate limited. Retrying in {backoff_time:.2f} seconds")
+                logger.warning(f"Rate limited (HTTP 429). Retrying in {backoff_time:.2f} seconds")
                 time.sleep(backoff_time)
                 retry_count += 1
                 continue
             
             if 200 <= response.status_code < 300:
                 # Success
-                logger.debug(f"Successfully sent event to mParticle")
+                logger.debug(f"Successfully sent event to mParticle (HTTP {response.status_code})")
                 return True
             else:
-                logger.error(f"Error sending event to mParticle: {response.status_code}, {response.text}")
+                logger.error(f"Error sending event to mParticle: HTTP {response.status_code}, {response.text}")
                 
                 # For certain errors, we might want to retry
                 if response.status_code >= 500:  # Server errors
@@ -71,21 +78,21 @@ def send_event_to_mparticle(
                     jitter = random.uniform(0, 1)
                     backoff_time = backoff_seconds + jitter
                     
-                    logger.warning(f"Server error. Retrying in {backoff_time:.2f} seconds")
+                    logger.warning(f"Server error (HTTP {response.status_code}). Retrying in {backoff_time:.2f} seconds")
                     time.sleep(backoff_time)
                     retry_count += 1
                     continue
                 return False
                 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Request exception when sending event: {e}")
+            logger.error(f"Request exception when sending event (attempt {retry_count + 1}/{max_retries}): {e}")
             
             # Calculate backoff time with jitter
             backoff_seconds = min(30, (2 ** retry_count))
             jitter = random.uniform(0, 1)
             backoff_time = backoff_seconds + jitter
             
-            logger.warning(f"Retrying in {backoff_time:.2f} seconds")
+            logger.warning(f"Network error. Retrying in {backoff_time:.2f} seconds")
             time.sleep(backoff_time)
             retry_count += 1
     
