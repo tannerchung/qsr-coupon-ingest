@@ -60,6 +60,28 @@ def parse_args() -> Dict[str, Any]:
         default='coupon_import.log', 
         help='Path to log file'
     )
+    parser.add_argument(
+        '--data-center', 
+        choices=['us', 'eu'], 
+        default='us', 
+        help='mParticle data center location'
+    )
+    parser.add_argument(
+        '--retry-failed', 
+        action='store_true', 
+        default=True,
+        help='Retry failed events after initial processing (default: True)'
+    )
+    parser.add_argument(
+        '--no-retry', 
+        dest='retry_failed',
+        action='store_false',
+        help='Disable retrying failed events'
+    )
+    parser.add_argument(
+        '--save-failed', 
+        help='Save failed events to this CSV file for manual retry'
+    )
 
     return vars(parser.parse_args())
 
@@ -85,16 +107,26 @@ def main():
             api_secret=args['api_secret'],
             environment=args['environment'],
             batch_size=args['batch_size'],
-            max_workers=args['max_workers']
+            max_workers=args['max_workers'],
+            data_center=args['data_center'],
+            retry_failed=args['retry_failed'],
+            save_failed_file=args['save_failed']
         )
         
         # Log the results
         elapsed_time = time.time() - start_time
         logger.info(f"Processing complete in {elapsed_time:.2f} seconds")
-        logger.info(
-            f"Results: {results['success']}/{results['total']} successful "
-            f"({results['failed']} failed)"
-        )
+        
+        if 'retry_successful' in results and results['retry_successful'] > 0:
+            logger.info(
+                f"Results: {results['success']}/{results['total']} successful "
+                f"({results['failed']} failed, {results['retry_successful']} recovered through retry)"
+            )
+        else:
+            logger.info(
+                f"Results: {results['success']}/{results['total']} successful "
+                f"({results['failed']} failed)"
+            )
         
         if results['failed'] > 0:
             logger.warning(f"Some events failed to process. Check logs for details.")
