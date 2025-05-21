@@ -9,7 +9,7 @@ A Python-based solution for integrating coupon data from a third-party provider 
 
 This package provides a robust solution for importing coupon data from CSV files and sending it to mParticle as custom events. It was specifically designed for QSR customers who need to integrate third-party coupon provider data with mParticle for customer engagement and marketing campaigns.
 
-The implementation includes features for handling large volumes of data efficiently, managing API rate limits, and ensuring data integrity through deduplication.
+The implementation includes features for handling large volumes of data efficiently, managing API rate limits, ensuring data integrity through deduplication, and automatically retrying failed requests.
 
 ## Features
 
@@ -17,10 +17,12 @@ The implementation includes features for handling large volumes of data efficien
 - **Unique ID Generation** - Generates deterministic unique IDs for events to prevent duplication
 - **mParticle API Integration** - Sends data to mParticle as custom events of type "other"
 - **Exponential Backoff** - Handles rate limiting with exponential backoff and jitter for reliable delivery
+- **Failed Event Requeuing** - Automatically retries failed events and saves persistently failed events to CSV
+- **Multi-Data Center Support** - Supports both US and EU mParticle data centers
 - **Parallel Processing** - Scales to handle large volumes of data efficiently
 - **Batch Processing** - Processes data in configurable batches for memory efficiency
-- **Comprehensive Logging** - Provides detailed logging for monitoring and troubleshooting
-- **Command-line Interface** - Offers an easy-to-use CLI for processing files
+- **Enhanced Logging** - Provides detailed logging with configurable verbosity levels
+- **Command-line Interface** - Offers an easy-to-use CLI with comprehensive options
 - **Robust Error Handling** - Includes comprehensive error handling for file operations, network requests, and API responses
 - **Progress Tracking** - Displays real-time progress updates during processing
 
@@ -35,7 +37,7 @@ The implementation includes features for handling large volumes of data efficien
 
 ```bash
 # Clone the repository
-git clone https://github.com/tannerchung/qsr-mparticle-integration.git
+git clone https://github.com/your-username/qsr-mparticle-integration.git
 cd qsr-mparticle-integration
 
 # Install dependencies
@@ -50,6 +52,17 @@ pip install -r requirements.txt
 python -m qsr_mparticle.main path/to/your/data.csv --api-key YOUR_API_KEY --api-secret YOUR_API_SECRET
 ```
 
+### Recommended Usage with Enhanced Features
+
+```bash
+python -m qsr_mparticle.main path/to/your/data.csv \
+  --api-key YOUR_API_KEY \
+  --api-secret YOUR_API_SECRET \
+  --verbose \
+  --save-failed failed_events.csv \
+  --environment production
+```
+
 ### Advanced Options
 
 ```bash
@@ -57,9 +70,11 @@ python -m qsr_mparticle.main path/to/your/data.csv \
   --api-key YOUR_API_KEY \
   --api-secret YOUR_API_SECRET \
   --environment production \
+  --data-center us \
   --batch-size 200 \
   --max-workers 20 \
   --verbose \
+  --save-failed failed_events.csv \
   --log-file custom_log_path.log
 ```
 
@@ -71,10 +86,77 @@ python -m qsr_mparticle.main path/to/your/data.csv \
 | `--api-key` | mParticle API key | Required |
 | `--api-secret` | mParticle API secret | Required |
 | `--environment` | mParticle environment (`development` or `production`) | `development` |
+| `--data-center` | mParticle data center (`us` or `eu`) | `us` |
 | `--batch-size` | Number of records to process in each batch | 100 |
 | `--max-workers` | Maximum number of parallel processing threads | 10 |
-| `--verbose` | Enable detailed logging | False |
+| `--verbose` | Enable detailed debug logging | False |
+| `--retry-failed` | Enable automatic retry of failed events (default: True) | True |
+| `--no-retry` | Disable automatic retry of failed events | False |
+| `--save-failed` | Save failed events to this CSV file for manual retry | None |
 | `--log-file` | Path to log file | `coupon_import.log` |
+
+### Failed Event Management
+
+The script now includes sophisticated failed event handling:
+
+#### Automatic Retry
+```bash
+# Automatic retry is enabled by default
+python -m qsr_mparticle.main data.csv --api-key KEY --api-secret SECRET
+
+# Disable automatic retry
+python -m qsr_mparticle.main data.csv --api-key KEY --api-secret SECRET --no-retry
+```
+
+#### Save Failed Events for Manual Processing
+```bash
+# Save failed events to a CSV file for later manual retry
+python -m qsr_mparticle.main data.csv \
+  --api-key KEY \
+  --api-secret SECRET \
+  --save-failed failed_events.csv
+```
+
+#### Process Only Failed Events
+```bash
+# Later, process only the failed events
+python -m qsr_mparticle.main failed_events.csv \
+  --api-key KEY \
+  --api-secret SECRET \
+  --batch-size 10 \
+  --max-workers 1
+```
+
+### Data Center Selection
+
+Choose the appropriate data center based on your mParticle account:
+
+```bash
+# For US-based accounts
+python -m qsr_mparticle.main data.csv --api-key KEY --api-secret SECRET --data-center us
+
+# For EU-based accounts
+python -m qsr_mparticle.main data.csv --api-key KEY --api-secret SECRET --data-center eu
+```
+
+### Enhanced Logging
+
+Enable verbose logging to see detailed processing information:
+
+```bash
+python -m qsr_mparticle.main data.csv \
+  --api-key KEY \
+  --api-secret SECRET \
+  --verbose
+```
+
+**Verbose logging includes:**
+- Row-by-row processing details
+- Full event payloads being sent to mParticle
+- Individual success/failure notifications
+- Detailed retry attempt information
+- Network error specifics
+- Configuration details
 
 ### Using as a Library
 
@@ -88,17 +170,22 @@ import logging
 # Configure logging if needed
 setup_logging(logging.INFO, 'import.log')
 
-# Process a CSV file
+# Process a CSV file with all options
 results = process_csv_data(
     csv_file_path='path/to/your/data.csv',
     api_key='YOUR_API_KEY',
     api_secret='YOUR_API_SECRET',
-    environment='development',
+    environment='production',
+    data_center='us',
     batch_size=100,
-    max_workers=10
+    max_workers=10,
+    retry_failed=True,
+    save_failed_file='failed_events.csv'
 )
 
 print(f"Processing complete: {results['success']}/{results['total']} successful")
+if 'retry_successful' in results:
+    print(f"Recovered through retry: {results['retry_successful']}")
 ```
 
 ## CSV Format
@@ -129,6 +216,25 @@ The integration sends events to mParticle with the following structure:
   - `event_id` - Unique identifier for deduplication
   - All CSV columns except for those used as user identities
 
+## Retry Strategy
+
+The script employs a multi-layered retry strategy:
+
+### 1. **Immediate Retries** (Per API Request)
+- **HTTP 429 (Rate Limited)**: Exponential backoff with jitter
+- **HTTP 5xx (Server Errors)**: Exponential backoff with jitter
+- **Network Errors**: Exponential backoff with jitter
+- **Max attempts**: 5 per request
+
+### 2. **Batch-Level Retries** (After Initial Processing)
+- Failed events are collected and retried using single-threaded processing
+- Includes delays between retries to be gentler on the API
+- Can be disabled with `--no-retry`
+
+### 3. **Manual Retry** (Persistent Failures)
+- Failed events saved to CSV file for manual review and retry
+- Use `--save-failed filename.csv` to enable
+
 ## Development
 
 ### Directory Structure
@@ -140,15 +246,15 @@ qsr-mparticle-integration/
 ├── .gitignore
 ├── qsr_mparticle/
 │   ├── __init__.py
-│   ├── main.py
-│   ├── processor.py
-│   ├── api.py
-│   └── utils.py
+│   ├── main.py          # CLI entry point
+│   ├── processor.py     # CSV processing and batch handling
+│   ├── api.py          # mParticle API client with retry logic
+│   └── utils.py        # Utility functions and event creation
 ├── examples/
-│   ├── sample.csv
-│   └── example_usage.py
+│   ├── sample.csv      # Sample data file
+│   └── example_usage.py # Example script
 └── tests/
-    └── ...
+    └── ...             # Unit tests
 ```
 
 ### Running Tests
@@ -179,21 +285,64 @@ pytest
 
 ### Common Issues
 
-1. **CSV format errors**:
+1. **DNS Resolution Errors**:
+   ```bash
+   # Try the EU data center if US fails
+   python -m qsr_mparticle.main data.csv --api-key KEY --api-secret SECRET --data-center eu
+   
+   # Use verbose logging to see detailed error information
+   python -m qsr_mparticle.main data.csv --api-key KEY --api-secret SECRET --verbose
+   ```
+
+2. **CSV format errors**:
    - Ensure your CSV file has the required headers (`email` and `coupon_code`)
    - Check for encoding issues (UTF-8 is recommended)
 
-2. **API authentication errors**:
+3. **API authentication errors**:
    - Verify your API key and secret are correct
    - Confirm your mParticle account has API access enabled
+   - Check that you're using the correct data center
 
-3. **Performance issues with large files**:
+4. **Performance issues with large files**:
    - Adjust `batch-size` and `max-workers` parameters for your system's resources
    - Consider pre-processing very large files into smaller chunks
 
-### Logging
+5. **Network connectivity issues**:
+   ```bash
+   # Test basic connectivity
+   curl -I https://s2s.mparticle.com/v2/events
+   
+   # Save failed events for retry after network issues are resolved
+   python -m qsr_mparticle.main data.csv --api-key KEY --api-secret SECRET --save-failed network_failed.csv
+   ```
 
-Detailed logs are saved to `coupon_import.log` by default. For more verbose logging, use the `--verbose` flag.
+### Monitoring and Logging
+
+**Log Levels:**
+- **INFO**: Progress updates, batch completion, final results
+- **DEBUG** (with `--verbose`): Row-by-row processing, full event payloads, detailed retry information
+- **WARNING**: Rate limiting, retries, non-fatal errors
+- **ERROR**: Failed requests, API errors, critical issues
+
+**Log Files:**
+- Default: `coupon_import.log`
+- Custom: Use `--log-file path/to/custom.log`
+- Console output: Always enabled alongside file logging
+
+### Performance Tuning
+
+For optimal performance with different file sizes:
+
+```bash
+# Small files (< 1,000 rows)
+python -m qsr_mparticle.main data.csv --batch-size 50 --max-workers 5
+
+# Medium files (1,000 - 10,000 rows)  
+python -m qsr_mparticle.main data.csv --batch-size 100 --max-workers 10
+
+# Large files (> 10,000 rows)
+python -m qsr_mparticle.main data.csv --batch-size 200 --max-workers 20
+```
 
 ## License
 
