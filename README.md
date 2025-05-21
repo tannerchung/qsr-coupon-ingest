@@ -35,7 +35,7 @@ The implementation includes features for handling large volumes of data efficien
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/qsr-mparticle-integration.git
+git clone https://github.com/tannerchung/qsr-mparticle-integration.git
 cd qsr-mparticle-integration
 
 # Install dependencies
