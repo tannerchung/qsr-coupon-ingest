@@ -113,9 +113,9 @@ Additional columns will be passed as custom attributes in the mParticle event.
 Example CSV format:
 
 ```csv
-email,coupon_code,discount_amount,expiration_date
-user1@example.com,SUMMER10,10.00,2023-12-31
-user2@example.com,FALL20,20.00,2023-11-30
+email,coupon_code
+user1@example.com,SUMMER10
+user2@example.com,FALL20
 ```
 
 ## Event Structure
