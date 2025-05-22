@@ -82,6 +82,72 @@ def parse_args() -> Dict[str, Any]:
         '--save-failed', 
         help='Save failed events to this CSV file for manual retry'
     )
+    parser.add_argument(
+        '--enable-streaming',
+        action='store_true',
+        default=True,
+        help='Enable streaming processing for large files (default: True)'
+    )
+    parser.add_argument(
+        '--disable-streaming',
+        dest='enable_streaming',
+        action='store_false',
+        help='Disable streaming processing'
+    )
+    parser.add_argument(
+        '--enable-deduplication',
+        action='store_true',
+        default=True,
+        help='Enable in-memory deduplication cache (default: True)'
+    )
+    parser.add_argument(
+        '--disable-deduplication',
+        dest='enable_deduplication',
+        action='store_false',
+        help='Disable deduplication cache'
+    )
+    parser.add_argument(
+        '--enable-batching',
+        action='store_true',
+        default=True,
+        help='Enable API request batching (default: True)'
+    )
+    parser.add_argument(
+        '--disable-batching',
+        dest='enable_batching',
+        action='store_false',
+        help='Disable API request batching'
+    )
+    parser.add_argument(
+        '--enable-checkpoints',
+        action='store_true',
+        default=True,
+        help='Enable checkpoint/resume functionality (default: True)'
+    )
+    parser.add_argument(
+        '--disable-checkpoints',
+        dest='enable_checkpoints',
+        action='store_false',
+        help='Disable checkpoint/resume functionality'
+    )
+    parser.add_argument(
+        '--enable-auto-tuning',
+        action='store_true',
+        default=True,
+        help='Enable performance auto-tuning (default: True)'
+    )
+    parser.add_argument(
+        '--disable-auto-tuning',
+        dest='enable_auto_tuning',
+        action='store_false',
+        help='Disable performance auto-tuning'
+    )
+    parser.add_argument(
+        '--chunk-size',
+        type=int,
+        default=5000,
+        help='Chunk size for streaming processing (default: 5000)'
+    )
 
     return vars(parser.parse_args())
 
@@ -110,7 +176,13 @@ def main():
             max_workers=args['max_workers'],
             data_center=args['data_center'],
             retry_failed=args['retry_failed'],
-            save_failed_file=args['save_failed']
+            save_failed_file=args['save_failed'],
+            enable_streaming=args['enable_streaming'],
+            enable_deduplication=args['enable_deduplication'],
+            enable_batching=args['enable_batching'],
+            enable_checkpoints=args['enable_checkpoints'],
+            enable_auto_tuning=args['enable_auto_tuning'],
+            chunk_size=args['chunk_size']
         )
         
         # Log the results
@@ -127,6 +199,12 @@ def main():
                 f"Results: {results['success']}/{results['total']} successful "
                 f"({results['failed']} failed)"
             )
+        
+        # Log optimization results
+        if 'deduplicated' in results and results['deduplicated'] > 0:
+            logger.info(f"Optimization: {results['deduplicated']} events deduplicated")
+        
+        logger.info("Processing completed successfully")
         
         if results['failed'] > 0:
             logger.warning(f"Some events failed to process. Check logs for details.")
